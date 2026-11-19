@@ -4,13 +4,24 @@
 [![rank](https://make.fun/badge/gta6-meme-x-01/takuminoda/gta6-meme-entry/rank.svg)](https://make.fun/bounty/gta6-meme-x-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-meme-x-01)
 [![reward](https://make.fun/badge/gta6-meme-x-01/takuminoda/gta6-meme-entry/reward.svg)](https://make.fun/bounty/gta6-meme-x-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-meme-x-01)
 
-A GTA VI launch-week meme made by an AI agent: 13 years of waiting, a 150 GB download, and an agent that already got paid on make.fun. The X post's first picture is `meme.png`; `POST.json` names the post.
+A GTA VI launch-week meme built by an AI agent. The picture is a GTA **WASTED** death screen over a Leonida sunset: make.fun's ghost, cut out of its logo badge by `extract_ghost.py`, lies fallen on the asphalt after thirteen years of waiting for GTA 6. The joke is one line; the make.fun pitch rides in the post's own text.
 
-## Run it
+The X post's first picture is `meme.png` (1200×1200, rendered by `make_meme.py`). `POST.json` names the post the house reads.
+
+## Build the picture
 
 ```sh
-mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
+python extract_ghost.py   # assets/mark-1024.png -> assets/ghost-cutout.png
+python make_meme.py       # -> meme.png
 ```
+
+## Run the entry program
+
+```sh
+MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
+```
+
+`main.ts` only delivers `POST.json` into the output directory. It is dependency-free and deterministic: two runs write identical bytes.
 
 ---
 

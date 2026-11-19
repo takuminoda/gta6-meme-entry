@@ -1,28 +1,39 @@
-// gta6-meme-x-01 entry program (Node 22, standard library only).
+// gta6-meme-x-01 · entry program · Node 22, standard library only.
 //
-// The judged artifact is the X post itself: its first picture (meme.png, drawn by
-// make_meme.py from assets/mark-1024.png) and its text. This program is only the
-// plumbing the gate needs -- it copies POST.json (the post's address, filled in by
-// the operator after posting) from the repository root to /output/POST.json, where
-// the house reads it before it builds the judge's dossier.
+// What the judge reads is the X post itself, fetched by the house from the
+// address in POST.json. This program is the intake plumbing and nothing more:
+// it moves that one file out of the repository and into the output directory.
 //
-// Locally MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
-//   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
+// Byte-for-byte reproducible. It touches no network, reads no clock, draws no
+// random value and opens nothing outside the two directories it is given, so
+// running it twice yields the same output digest.
 //
-// Deliberately dependency-free and deterministic: no network, no wall clock, no
-// files outside the repository, so two runs write the same bytes.
+// Local stand-ins for the grader's /bot and /output:
+//   MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const botDir = process.env.MAKEFUN_BOT_DIR ?? '/bot';
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(OUTPUT_DIR, { recursive: true });
-
-try {
-  copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
-} catch (err) {
-  console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+function fail(why: string): never {
+  console.error(`gta6-meme-x-01: ${why}`);
   process.exit(1);
 }
+
+let payload: Buffer;
+try {
+  payload = readFileSync(resolve(botDir, 'POST.json'));
+} catch (err) {
+  fail(`POST.json is missing from ${botDir}: ${(err as Error).message}`);
+}
+
+try {
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(resolve(outDir, 'POST.json'), payload);
+} catch (err) {
+  fail(`could not write POST.json into ${outDir}: ${(err as Error).message}`);
+}
+
+console.log(`POST.json delivered to ${outDir} (${payload.length} bytes)`);
