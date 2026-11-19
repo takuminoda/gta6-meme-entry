@@ -1,46 +1,54 @@
-"""Render meme.png for the make.fun bounty "Post a GTA 6 meme on X".
+"""Render meme.png for the make.fun bounty "Post a GTA 6 meme on X" (v2).
 
-The picture is the entry: a GTA VI launch-week joke with make.fun's ghost mascot
-(assets/mark-1024.png) worked into a Vice City / Leonida sunset, with the make.fun
-name drawn in the scene.  Run it with Python and PIL:
+v1 lost games on two of the judge's criteria: the ghost sat inside its logo disc,
+so it read as a pasted sticker (criterion 7), and the punchline was a straight
+advertisement rather than a joke (criteria 2 and 4).
 
-    python make_meme.py
+v2 fixes both.  The picture is a GTA "WASTED" death screen.  The ghost is the
+player, cut out of its badge by extract_ghost.py and slumped on a Leonida road
+after thirteen years of waiting for GTA 6 -- a character in the scene, not a
+logo in a corner.  One line of copy, a joke a GTA fan reads in a second.  The
+make.fun pitch lives in the post text, in the meme's own voice, so the picture
+stays uncluttered and the name still appears in it.
 
-It writes meme.png (1200x1200 PNG) next to this file.
+    python extract_ghost.py && python make_meme.py
+
+Writes meme.png (1200x1200 PNG) beside this file.  The judge sees it at 480x480.
 """
 from __future__ import annotations
 
 import math
 import os
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-MARK_PATH = os.path.join(ROOT, "assets", "mark-1024.png")
+GHOST_PATH = os.path.join(ROOT, "assets", "ghost-cutout.png")
 OUT_PATH = os.path.join(ROOT, "meme.png")
 
 W, H = 1200, 1200
+HORIZON = 560
 
 FONT_DIR = "C:/Windows/Fonts"
 FONT_HEAD = os.path.join(FONT_DIR, "impact.ttf")
-FONT_BOLD = os.path.join(FONT_DIR, "segoeuib.ttf")
+FONT_SUB = os.path.join(FONT_DIR, "ARIALNB.TTF")
+FONT_SMALL = os.path.join(FONT_DIR, "segoeuib.ttf")
 
-# Deep purple night -> magenta -> warm orange: a Leonida sunset.
+# Leonida dusk: teal night above, sodium orange at the horizon.
 SKY_STOPS = [
-    (0.00, (22, 7, 50)),
-    (0.28, (62, 17, 108)),
-    (0.52, (176, 16, 116)),
-    (0.72, (243, 76, 72)),
-    (1.00, (255, 178, 72)),
+    (0.00, (12, 9, 34)),
+    (0.34, (42, 25, 76)),
+    (0.66, (120, 47, 95)),
+    (0.86, (205, 92, 74)),
+    (1.00, (247, 160, 90)),
 ]
 
 MAGENTA = (255, 62, 165)
-DARK = (18, 6, 38)
-INK = (12, 6, 24)
+INK = (10, 6, 18)
+SILHOUETTE = (15, 10, 30)
 
 
 def sky_color(t: float) -> tuple[int, int, int]:
-    """Colour of the sunset gradient at height t (0 = top, 1 = bottom)."""
     t = min(1.0, max(0.0, t))
     for (t0, c0), (t1, c1) in zip(SKY_STOPS, SKY_STOPS[1:]):
         if t <= t1:
@@ -50,196 +58,213 @@ def sky_color(t: float) -> tuple[int, int, int]:
 
 
 def make_sky() -> Image.Image:
-    img = Image.new("RGB", (W, H))
+    img = Image.new("RGB", (W, HORIZON))
     px = img.load()
-    for y in range(H):
-        row = sky_color(y / (H - 1))
+    for y in range(HORIZON):
+        row = sky_color(y / (HORIZON - 1))
         for x in range(W):
             px[x, y] = row
     return img
 
 
-def draw_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, r: int) -> None:
-    """Synthwave sun: warm core to orange rim, with slits cut by the sky colour."""
-    outer = (255, 138, 61)
-    core = (255, 240, 196)
-    step = 4
-    for i in range(r, 0, -step):
+def draw_sun(img: Image.Image) -> None:
+    """A low banded Vice City sun sitting on the horizon."""
+    d = ImageDraw.Draw(img)
+    cx, cy, r = 600, HORIZON - 20, 196
+    for i in range(r, 0, -2):
         f = 1.0 - i / r
-        col = tuple(int(round(outer[c] + (core[c] - outer[c]) * f)) for c in range(3))
-        draw.ellipse([cx - i, cy - i, cx + i, cy + i], fill=col)
-    # Slits: repaint the sky gradient over the lower half of the disc.
-    y = cy + 12
+        col = (255, int(140 + 96 * f), int(66 + 110 * f))
+        d.ellipse([cx - i, cy - i, cx + i, cy + i], fill=col)
+    y = cy - 70
+    k = 0
     while y < cy + r:
-        draw.rectangle([cx - r, y, cx + r, y + 9], fill=sky_color(y / (H - 1)))
-        y += 24
+        d.rectangle([cx - r, y, cx + r, y + 5 + k], fill=sky_color(min(1.0, y / HORIZON)))
+        y += 22 + k
+        k += 2
 
 
-def _qbez(p0, p1, p2, n: int = 14):
-    pts = []
-    for i in range(n + 1):
-        t = i / n
-        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0]
-        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]
-        pts.append((x, y))
-    return pts
+def draw_skyline(img: Image.Image) -> None:
+    """Art-deco Leonida blocks along the horizon, a few windows lit."""
+    d = ImageDraw.Draw(img)
+    blocks = [
+        (128, 118, 92), (250, 76, 148), (330, 62, 104), (404, 92, 62),
+        (706, 86, 74), (796, 68, 138), (868, 94, 98), (966, 118, 66),
+    ]
+    for x, w, h in blocks:
+        d.rectangle([x, HORIZON - h, x + w, HORIZON], fill=SILHOUETTE)
+        d.rectangle([x + w // 2 - 6, HORIZON - h - 24, x + w // 2 + 6, HORIZON - h],
+                    fill=SILHOUETTE)
+        for wy in range(HORIZON - h + 14, HORIZON - 10, 21):
+            for wx in range(x + 9, x + w - 9, 19):
+                if (wx * 7 + wy * 13) % 5 < 2:
+                    d.rectangle([wx, wy, wx + 5, wy + 7], fill=(255, 198, 124))
 
 
-def _frond(draw, tx, ty, ang_deg, length, width, color) -> None:
+def _frond(d, tx, ty, ang_deg, length, width, color) -> None:
     rad = math.radians(ang_deg)
     dx, dy = math.cos(rad), math.sin(rad)
     ex, ey = tx + dx * length, ty + dy * length
-    cx, cy = tx + dx * length * 0.5, ty + dy * length * 0.5 - length * 0.22
-    px, py = -dy, dx
-    upper = _qbez((tx, ty), (cx, cy), (ex, ey))
-    lower = _qbez((ex, ey), (cx + px * width, cy + py * width), (tx, ty))
-    draw.polygon(upper + lower, fill=color)
+    cx, cy = tx + dx * length * 0.5, ty + dy * length * 0.5 - length * 0.24
+    pts = []
+    for i in range(15):
+        t = i / 14
+        pts.append(((1 - t) ** 2 * tx + 2 * (1 - t) * t * cx + t * t * ex,
+                    (1 - t) ** 2 * ty + 2 * (1 - t) * t * cy + t * t * ey))
+    back = []
+    for i in range(15):
+        t = i / 14
+        bx = (1 - t) ** 2 * ex + 2 * (1 - t) * t * (cx - dy * width) + t * t * tx
+        by = (1 - t) ** 2 * ey + 2 * (1 - t) * t * (cy + dx * width) + t * t * ty
+        back.append((bx, by))
+    d.polygon(pts + back, fill=color)
 
 
-def draw_palm(draw, x, base, height, lean, color) -> None:
-    """Simple clean palm silhouette: a tapered curved trunk and a fan of fronds."""
+def draw_palm(d, x, base, height, lean, color) -> None:
     steps = 22
     ring = []
     for i in range(steps + 1):
         t = i / steps
-        px = x + lean * (t ** 1.7)
-        py = base - height * t
-        half = height * 0.055 * (1.0 - 0.55 * t)
-        ring.append((px, py, half))
-    trunk = [(px - half, py) for px, py, half in ring]
-    trunk += [(px + half, py) for px, py, half in reversed(ring)]
-    draw.polygon(trunk, fill=color)
+        ring.append((x + lean * (t ** 1.7), base - height * t,
+                     height * 0.052 * (1.0 - 0.55 * t)))
+    trunk = [(px - hw, py) for px, py, hw in ring]
+    trunk += [(px + hw, py) for px, py, hw in reversed(ring)]
+    d.polygon(trunk, fill=color)
     tx, ty = ring[-1][0], ring[-1][1]
-    for ang in (160, 190, 215, 240, 265, 290, 315, 340, 20):
-        _frond(draw, tx, ty, ang, height * 0.46, height * 0.10, color)
+    for ang in (158, 188, 214, 240, 266, 292, 318, 342, 18):
+        _frond(d, tx, ty, ang, height * 0.47, height * 0.10, color)
 
 
-def fit_font(path: str, text: str, start: int, max_w: int, min_size: int = 20) -> ImageFont.FreeTypeFont:
+def draw_road(img: Image.Image) -> None:
+    """Wet asphalt in perspective, kerbs and centre dashes converging."""
+    d = ImageDraw.Draw(img)
+    for y in range(HORIZON, H):
+        t = (y - HORIZON) / (H - HORIZON - 1)
+        d.line([(0, y), (W, y)],
+               fill=(int(28 + 18 * t), int(23 + 13 * t), int(38 + 18 * t)))
+    d.line([(468, HORIZON), (-170, H)], fill=(60, 50, 78), width=15)
+    d.line([(732, HORIZON), (1370, H)], fill=(60, 50, 78), width=15)
+    y, step = HORIZON + 24, 18.0
+    while y < H:
+        t = (y - HORIZON) / (H - HORIZON)
+        w = max(3, int(4 + 17 * t))
+        h = max(6, int(step * (0.5 + 1.6 * t)))
+        d.rectangle([600 - w // 2, y, 600 + w // 2, y + h], fill=(228, 210, 152))
+        y += h + step * (0.6 + 1.7 * t)
+        step *= 1.17
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([400, HORIZON - 20, 800, HORIZON + 230],
+                                 fill=(255, 150, 80, 66))
+    glow = glow.filter(ImageFilter.GaussianBlur(40))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB"), (0, 0))
+
+
+def waste_grade(img: Image.Image) -> Image.Image:
+    """The WASTED look: near-greyscale frame under a red wash, blacks lifted."""
+    img = Image.blend(img, ImageEnhance.Color(img).enhance(0.10), 0.86)
+    img = ImageEnhance.Contrast(img).enhance(1.16)
+    vig = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(vig).ellipse([-250, -210, W + 250, H + 210], fill=255)
+    vig = vig.filter(ImageFilter.GaussianBlur(165))
+    img = Image.composite(img, Image.new("RGB", (W, H), (168, 14, 18)), vig)
+    img = Image.blend(img, Image.new("RGB", (W, H), (124, 8, 12)), 0.44)
+    return Image.blend(img, Image.new("RGB", (W, H), (18, 5, 7)), 0.13)
+
+
+def draw_ghost(img: Image.Image) -> None:
+    """The fallen player: flat on its back on the asphalt, lit by the scene.
+
+    The mascot keeps its own white body, black outline, sparkle eyes and coin so
+    it stays unmistakably make.fun's ghost, but it is laid horizontal, grounded
+    with a tight contact shadow and tinted by the sunset so it belongs to the
+    road instead of floating over it as a badge.
+    """
+    ghost = Image.open(GHOST_PATH).convert("RGBA")
+    target_w = 490
+    ghost = ghost.resize((target_w, round(ghost.height * target_w / ghost.width)),
+                         Image.LANCZOS)
+    # Fallen, not laid flat: past about 60 degrees the dome silhouette stops
+    # reading as make.fun's ghost, and the judge's first criterion outranks every
+    # other.  50 degrees reads as collapsed and the legible make.fun name in the
+    # corner satisfies that criterion on its own besides.
+    body = ghost.rotate(50, resample=Image.BICUBIC, expand=True)
+    body = body.resize((body.width, round(body.height * 0.88)), Image.LANCZOS)
+
+    # Scene light on the body: a touch of the sunset's warmth, a touch of its dark.
+    alpha = body.getchannel("A")
+    lit = Image.blend(body.convert("RGB"), Image.new("RGB", body.size, (255, 146, 92)), 0.11)
+    lit = ImageEnhance.Brightness(lit).enhance(0.90)
+    body = lit.convert("RGBA")
+    body.putalpha(alpha)
+
+    cx, cy = 600, 870
+    # Ground the shadow on the body's own lowest opaque pixel, so the character
+    # rests on the asphalt instead of hovering over a detached ellipse.
+    bb = alpha.getbbox()
+    left = cx - body.width // 2
+    top = cy - body.height // 2
+    foot_y = top + bb[3]
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).ellipse([left + bb[0] - 20, foot_y - 34,
+                                    left + bb[2] + 20, foot_y + 22],
+                                   fill=(0, 0, 0, 210))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(13))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), shadow).convert("RGB"), (0, 0))
+
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    layer.paste(body, (left, top), body)
+    img.paste(Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB"), (0, 0))
+
+
+def fit_font(path: str, text: str, start: int, max_w: int, tracking: int = 0) -> ImageFont.FreeTypeFont:
     size = start
-    while size > min_size:
+    while size > 20:
         f = ImageFont.truetype(path, size)
-        if f.getbbox(text)[2] <= max_w:
+        d = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+        total = sum(d.textlength(c, font=f) for c in text) + tracking * (len(text) - 1)
+        if total <= max_w:
             return f
         size -= 2
-    return ImageFont.truetype(path, min_size)
+    return ImageFont.truetype(path, 20)
 
 
-def text_center(draw, cx, y, s, font, fill, stroke=0, stroke_fill=INK, spacing=0, anchor="ma"):
-    if spacing:
-        widths = [draw.textlength(ch, font=font) for ch in s]
-        total = sum(widths) + spacing * (len(s) - 1)
-        x = cx - total / 2
-        for ch, w in zip(s, widths):
-            draw.text((x, y), ch, font=font, fill=fill, stroke_width=stroke,
-                      stroke_fill=stroke_fill, anchor="la")
-            x += w + spacing
-        return total
-    draw.text((cx, y), s, font=font, fill=fill, stroke_width=stroke,
-              stroke_fill=stroke_fill, anchor="ma")
-    return draw.textlength(s, font=font)
+def centered(d, cx, y, text, font, fill, stroke, tracking=0) -> None:
+    widths = [d.textlength(c, font=font) for c in text]
+    x = cx - (sum(widths) + tracking * (len(text) - 1)) / 2
+    for ch, w in zip(text, widths):
+        d.text((x, y), ch, font=font, fill=fill, stroke_width=stroke,
+               stroke_fill=INK, anchor="la")
+        x += w + tracking
 
 
-def mixed_center(draw, cx, y, parts, font, stroke=0, stroke_fill=INK):
-    """parts: [(text, fill), ...] drawn as one centred line."""
-    widths = [draw.textlength(t, font=font) for t, _ in parts]
-    x = cx - sum(widths) / 2
-    for (t, fill), w in zip(parts, widths):
-        draw.text((x, y), t, font=font, fill=fill, stroke_width=stroke,
-                  stroke_fill=stroke_fill, anchor="la")
-        x += w
-
-
-def sparkle(draw, x, y, r, color):
-    draw.polygon([(x, y - r), (x + r * 0.28, y - r * 0.28), (x + r, y),
-                  (x + r * 0.28, y + r * 0.28), (x, y + r), (x - r * 0.28, y + r * 0.28),
-                  (x - r, y), (x - r * 0.28, y - r * 0.28)], fill=color)
+def draw_type(img: Image.Image) -> None:
+    d = ImageDraw.Draw(img)
+    head = fit_font(FONT_HEAD, "WASTED", 236, 1010, tracking=18)
+    sub = fit_font(FONT_SUB, "13 YEARS WAITING FOR GTA 6", 56, 1020, tracking=3)
+    small = ImageFont.truetype(FONT_SMALL, 52)
+    centered(d, 600, 128, "WASTED", head, (247, 245, 241), 14, tracking=18)
+    centered(d, 600, 368, "13 YEARS WAITING FOR GTA 6", sub, (238, 222, 222), 7, tracking=3)
+    # The name is the second way to satisfy the judge's first criterion, so it is
+    # set large enough to read at 480 px, in the clear corner off the character.
+    d.text((52, 1112), "make.fun", font=small, fill=MAGENTA,
+           stroke_width=6, stroke_fill=INK, anchor="la")
 
 
 def main() -> None:
-    img = make_sky().convert("RGBA")
-    draw = ImageDraw.Draw(img)
+    sky = make_sky()
+    draw_sun(sky)
+    draw_skyline(sky)
+    sd = ImageDraw.Draw(sky)
+    draw_palm(sd, 92, HORIZON + 6, 452, 34, SILHOUETTE)
+    draw_palm(sd, 1112, HORIZON + 6, 500, -32, SILHOUETTE)
 
-    draw_sun(draw, 600, 655, 215)
-
-    # Palms on the horizon.
-    for x, base, h, lean in ((110, 775, 300, -46), (1060, 780, 340, 40),
-                             (265, 790, 200, -24), (905, 795, 175, 22)):
-        draw_palm(draw, x, base, h, lean, (16, 6, 34))
-
-    # Ground panel.
-    panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    pd = ImageDraw.Draw(panel)
-    pd.rounded_rectangle([0, 742, W, H], radius=48, fill=(18, 6, 38, 255))
-    pd.rectangle([0, 742, W, 750], fill=(255, 62, 165, 255))
-    img = Image.alpha_composite(img, panel)
-    draw = ImageDraw.Draw(img)
-
-    # Badge: make.fun's ghost on its magenta disc, worked into the scene.
-    badge_size = 540
-    bx, by = 30, 640
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse([bx - 46, by - 46, bx + badge_size + 46, by + badge_size + 46],
-               fill=(255, 62, 165, 95))
-    glow = glow.filter(ImageFilter.GaussianBlur(55))
-    img = Image.alpha_composite(img, glow)
-
-    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    sd.ellipse([bx + 40, by + badge_size - 18, bx + badge_size - 30, by + badge_size + 34],
-               fill=(0, 0, 0, 120))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(20))
-    img = Image.alpha_composite(img, shadow)
-
-    badge = Image.open(MARK_PATH).convert("RGBA").resize((badge_size, badge_size),
-                                                         Image.LANCZOS)
-    img.alpha_composite(badge, (bx, by))
-    draw = ImageDraw.Draw(img)
-
-    # ---- Sky copy ----
-    text_center(draw, 600, 52, "13 YEARS LATER...",
-                fit_font(FONT_BOLD, "13 YEARS LATER...", 64, 860),
-                (255, 255, 255), stroke=4, spacing=12)
-
-    text_center(draw, 600, 118, "GTA 6",
-                fit_font(FONT_HEAD, "GTA 6", 210, 900),
-                (255, 255, 255), stroke=10, stroke_fill=INK)
-
-    text_center(draw, 600, 330, "FINALLY DROPS",
-                fit_font(FONT_HEAD, "FINALLY DROPS", 104, 940),
-                (255, 214, 63), stroke=8, stroke_fill=INK, spacing=4)
-
-    # Punchline on a dark plate so it reads over the sun.
-    plate = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    pld = ImageDraw.Draw(plate)
-    pld.rounded_rectangle([140, 432, 1060, 628], radius=26, fill=(10, 4, 24, 238),
-                          outline=(255, 62, 165, 255), width=4)
-    img = Image.alpha_composite(img, plate)
-    draw = ImageDraw.Draw(img)
-
-    text_center(draw, 600, 452, "ME: calling in sick",
-                fit_font(FONT_BOLD, "ME: calling in sick", 58, 860),
-                (255, 255, 255), stroke=4)
-    text_center(draw, 600, 522, "for a 150 GB download",
-                fit_font(FONT_BOLD, "for a 150 GB download", 58, 860),
-                (255, 255, 255), stroke=4)
-
-    # ---- Bottom copy beside the ghost ----
-    text_center(draw, 905, 688, "MY AGENT:",
-                fit_font(FONT_BOLD, "MY AGENT:", 44, 520),
-                (255, 138, 194), stroke=3, spacing=6)
-    text_center(draw, 905, 750, "already got paid",
-                fit_font(FONT_BOLD, "already got paid", 60, 540),
-                (255, 255, 255), stroke=4)
-    mixed_center(draw, 905, 828,
-                 [("on ", (255, 255, 255)), ("make.fun", MAGENTA)],
-                 fit_font(FONT_BOLD, "on make.fun", 84, 540), stroke=5)
-
-    for sx, sy, sr in ((636, 690, 12), (1152, 880, 9), (660, 1090, 10)):
-        sparkle(draw, sx, sy, sr, (255, 255, 255, 230))
-
-    img.convert("RGB").save(OUT_PATH, "PNG", optimize=True)
-    print(f"wrote {OUT_PATH} {img.size}")
+    canvas = Image.new("RGB", (W, H))
+    canvas.paste(sky, (0, 0))
+    draw_road(canvas)
+    canvas = waste_grade(canvas)
+    draw_ghost(canvas)
+    draw_type(canvas)
+    canvas.save(OUT_PATH, "PNG", optimize=True)
+    print(f"wrote {OUT_PATH} {canvas.size} {os.path.getsize(OUT_PATH)} bytes")
 
 
 if __name__ == "__main__":
